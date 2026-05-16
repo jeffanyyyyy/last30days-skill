@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import pathlib
+import re
 from collections import Counter
 from datetime import date
 from urllib.parse import urlparse
@@ -11,22 +12,45 @@ from urllib.parse import urlparse
 from . import dates, schema
 
 
-def _skill_version() -> str:
-    """Read plugin version from a plugin manifest if available.
+_VERSION_RE = re.compile(
+    r'''^version:\s*(?:"([^"]+)"|'([^']+)'|(\S+))\s*$''',
+    re.MULTILINE,
+)
 
-    Tries nearest plugin.json by walking up from render.py's own location.
-    Falls back to "?" if not found. This keeps the badge emission from
-    crashing on non-plugin-cache installs (repo checkout, Gemini, Codex).
+
+def _skill_version() -> str:
+    """Read plugin version from .claude-plugin/plugin.json, falling back to SKILL.md frontmatter.
+
+    sync.sh does not copy .claude-plugin/ to non-cache install dirs (~/.codex/skills,
+    ~/.agents/skills, Hermes), so SKILL.md frontmatter is the fallback that keeps the
+    badge from emitting v? on those installs. Returns "?" only if both sources are missing.
+
+    A corrupt manifest at one ancestor does not shadow a valid manifest at a deeper one
+    (continue, not break). YAML frontmatter accepts double-quoted, single-quoted, or
+    unquoted version scalars.
     """
     here = pathlib.Path(__file__).resolve()
-    for parent in [here.parent, *here.parents]:
-        for manifest_dir in (".codex-plugin", ".claude-plugin"):
-            candidate = parent / manifest_dir / "plugin.json"
-            if candidate.is_file():
-                try:
-                    return json.loads(candidate.read_text()).get("version", "?")
-                except (json.JSONDecodeError, OSError):
-                    return "?"
+    for parent in here.parents:
+        manifest = parent / ".claude-plugin" / "plugin.json"
+        if manifest.is_file():
+            try:
+                version = json.loads(manifest.read_text()).get("version")
+            except (json.JSONDecodeError, OSError):
+                continue
+            if version:
+                return version
+
+    # No usable manifest found at any ancestor — fall back to SKILL.md frontmatter.
+    for parent in here.parents:
+        skill_md = parent / "SKILL.md"
+        if skill_md.is_file():
+            try:
+                match = _VERSION_RE.search(skill_md.read_text())
+            except (OSError, UnicodeDecodeError):
+                break
+            if match:
+                return next(g for g in match.groups() if g is not None)
+            break
     return "?"
 
 

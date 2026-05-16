@@ -22,20 +22,17 @@ def _skill_version() -> str:
 
 
 class TestPluginContract(unittest.TestCase):
-    def test_codex_manifest_points_at_skills_tree(self) -> None:
-        manifest = _json(ROOT / ".codex-plugin" / "plugin.json")
-
-        self.assertEqual("last30days", manifest["name"])
-        self.assertEqual("./skills/", manifest["skills"])
-        self.assertTrue(SKILL_ROOT.joinpath("SKILL.md").is_file())
-        self.assertTrue(SKILL_ROOT.joinpath("scripts", "last30days.py").is_file())
+    def test_codex_plugin_scaffold_stays_removed(self) -> None:
+        # .codex-plugin/ was removed in the resolver-collapse refactor; Codex users
+        # install via `npx skills add` or `~/.codex/skills/`. A reintroduction would
+        # silently fork the install surface.
+        self.assertFalse((ROOT / ".codex-plugin").exists())
 
     def test_versions_match_across_manifests(self) -> None:
         pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         version = pyproject["project"]["version"]
 
         self.assertEqual(version, _skill_version())
-        self.assertEqual(version, _json(ROOT / ".codex-plugin" / "plugin.json")["version"])
         self.assertEqual(version, _json(ROOT / ".claude-plugin" / "plugin.json")["version"])
 
         marketplace = _json(ROOT / ".claude-plugin" / "marketplace.json")
