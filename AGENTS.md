@@ -3,14 +3,13 @@
 Agent Skills package for researching any topic across Reddit, X, YouTube, and web. Installable across Claude Code (most common host), Codex, Cursor, GitHub Copilot, Gemini CLI, and 50+ other [Agent Skills](https://agentskills.io) hosts. Python scripts with multi-source search aggregation.
 
 ## Structure
-- `skills/last30days/SKILL.md` — canonical skill definition
+- `skills/last30days/SKILL.md` — canonical skill definition / runtime spec the model reads when the slash command fires (`SKILL-original.md` at repo root is the historical v1 spec, kept for reference only)
 - `skills/last30days/scripts/last30days.py` — main research engine
 - `skills/last30days/scripts/lib/` — search, enrichment, rendering modules
 - `skills/last30days/scripts/lib/vendor/bird-search/` — vendored X search client
 - `docs/solutions/` — documented solutions to past problems (bugs, best practices, workflow patterns), organized by category with YAML frontmatter (`module`, `tags`, `problem_type`)
 - `CONCEPTS.md` — shared domain vocabulary (Skill, Engine, Harness, Beta channel) — relevant when orienting to the codebase or discussing project terminology
 - `CONFIGURATION.md` — user-facing knobs (env vars, flags, per-host install patterns); keep in sync per the rules below
-- `SKILL.md` (under `skills/last30days/`) — canonical runtime spec the model reads when the slash command fires; `SKILL-original.md` at repo root is the historical v1 spec, kept for reference only
 - `CHANGELOG.md` / `release-notes.md` — release history and human-readable notes (CHANGELOG = structured, release-notes = launch copy)
 - `HERMES_SETUP.md` — install instructions for the Hermes harness specifically
 
@@ -24,7 +23,7 @@ Agent Skills package for researching any topic across Reddit, X, YouTube, and we
 ```bash
 # Dev/fallback: direct engine invocation (scripting, cron, or engine testing only)
 python3 skills/last30days/scripts/last30days.py "test query" --emit=compact
-npx skills add . -g -y   # one-time: symlink this repo into every detected harness's skill dir
+npx skills add . -g -y   # copies skill into ~/.agents/skills/<name>/ (frozen at install time); re-run to sync working-tree edits — see Rules below
 
 # Tests (pytest, ~89 files under tests/, configured in pyproject.toml)
 uv run pytest                              # full suite
