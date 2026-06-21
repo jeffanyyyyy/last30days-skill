@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- GitHub repo stars are no longer mislabeled as "reactions" in the report footer. Repo cards now use a distinct `stars` engagement key, velocity cards use `merged_prs`, and genuine issue/PR reaction counts keep their own `reactions` key, so the footer displays the correct label per item type ([#642](https://github.com/mvanhorn/last30days-skill/issues/642))
+
 ## [3.7.0] - 2026-06-20
 
 ### Added
