@@ -1,16 +1,16 @@
 name: Daily last30days brief
 
 # ┌──────────────────────────────────────────────────────────────┐
-# │ 每天自動跑一次 last30days，把完整 brief 寄到你的 email。          │
-# │ 需要先在 repo 設定好 Secrets / Variables（見 DAILY-BRIEF-設定說明）│
+# │ 每天自動跑一次 last30days，逐一研究多個題目，每個題目各寄一封信。  │
+# │ 題目放在 repo 的 Variable「TOPICS」，一行一個。                  │
+# │ 需要先設定好 Secrets / Variables（見 DAILY-BRIEF-設定說明）      │
 # └──────────────────────────────────────────────────────────────┘
 
 on:
   schedule:
-    # cron 用的是 UTC。08:00 台北時間 = 00:00 UTC。
-    # 想改時間就改這行：例如早上 7 點台北 = 23:00 前一天 UTC = "0 23 * * *"
+    # cron 用 UTC。08:00 台北 = 00:00 UTC。改時間就改這行。
     - cron: "0 0 * * *"
-  workflow_dispatch: {}   # 讓你可以在 GitHub 上手動按一下馬上跑一次（測試用）
+  workflow_dispatch: {}   # 讓你可以在 GitHub 上手動按一下馬上跑（測試用）
 
 jobs:
   brief:
@@ -24,56 +24,51 @@ jobs:
         with:
           python-version: "3.12"
 
-      # Node 不是免費來源必需，但裝著可避免部分來源意外報錯（幾秒鐘的事）
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
-      - name: Run last30days research
+      - name: Research each topic and email it
         env:
-          # ── 推理來源（做綜合用）— 兩條都完全免費，二選一 ─────────────
-          #
-          # 【路 B｜OpenRouter 免費模型（預設，品質較好）】
-          #   到 openrouter.ai 用 email 註冊拿金鑰（免綁卡），存成 secret
-          #   OPENROUTER_API_KEY。下面三行會強制走「免費自動路由」，不會扣錢。
+          # ── 推理來源（免費）：OpenRouter 免費自動路由 ──────────────
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           LAST30DAYS_REASONING_PROVIDER: openrouter
           LAST30DAYS_PLANNER_MODEL: openrouter/free
           LAST30DAYS_RERANK_MODEL: openrouter/free
-          #
-          # 【路 A｜完全不給金鑰（最簡單、零帳號）】
-          #   把上面那 4 行整段刪掉／註解掉即可。引擎會自動退到「本機決定式」，
-          #   完全 $0、不用任何帳號，品質較陽春。
-          # ─────────────────────────────────────────────────────────
+          #   （想改走「完全不給金鑰」的本機模式：把上面這 4 行整段刪掉即可）
           LAST30DAYS_MEMORY_DIR: ${{ github.workspace }}/out
-        run: |
-          mkdir -p out
-          python3 skills/last30days/scripts/last30days.py "${{ vars.TOPIC }}" \
-            --days=30 \
-            --quick \
-            --emit=html \
-            --output out/brief.html
-          echo "產出檔案："
-          ls -la out/
-
-      - name: Email the brief (Resend)
-        env:
+          # ── 寄信（Resend）──────────────────────────────────────
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
-          TOPIC: ${{ vars.TOPIC }}
+          # ── 題目清單（一行一個）────────────────────────────────
+          TOPICS: ${{ vars.TOPICS }}
         run: |
-          # 把整份 HTML brief 讀進來、轉成合法 JSON 字串
-          BODY=$(jq -Rs . < out/brief.html)
-          # 組出 Resend 要的 JSON，然後 POST 出去
-          jq -n \
-            --arg from "last30days <onboarding@resend.dev>" \
-            --arg to "$EMAIL_TO" \
-            --arg subject "📰 每日 last30days：$TOPIC" \
-            --argjson html "$BODY" \
-            '{from:$from, to:[$to], subject:$subject, html:$html}' \
-          | curl -sf -X POST https://api.resend.com/emails \
-              -H "Authorization: Bearer $RESEND_API_KEY" \
-              -H "Content-Type: application/json" \
-              --data @-
-          echo "已送出。"
+          mkdir -p out
+          # 逐行讀 TOPICS，每個題目研究一次、寄一封信
+          while IFS= read -r topic; do
+            # 去掉前後空白，跳過空行
+            topic="$(echo "$topic" | xargs)"
+            [ -z "$topic" ] && continue
+
+            echo "=== 研究：$topic ==="
+            python3 skills/last30days/scripts/last30days.py "$topic" \
+              --days=30 --quick --emit=html --output out/brief.html \
+              || { echo "!! $topic 這則跑失敗，跳過"; continue; }
+
+            # 把整份 HTML 轉成合法 JSON 字串，POST 給 Resend
+            BODY=$(jq -Rs . < out/brief.html)
+            jq -n \
+              --arg from "last30days <onboarding@resend.dev>" \
+              --arg to "$EMAIL_TO" \
+              --arg subject "📰 每日 last30days：$topic" \
+              --argjson html "$BODY" \
+              '{from:$from, to:[$to], subject:$subject, html:$html}' \
+            | curl -sf -X POST https://api.resend.com/emails \
+                -H "Authorization: Bearer $RESEND_API_KEY" \
+                -H "Content-Type: application/json" \
+                --data @- \
+              && echo "已寄出：$topic" || echo "!! $topic 寄信失敗"
+
+            sleep 3   # 稍微間隔，別一次打爆免費額度
+          done <<< "$TOPICS"
